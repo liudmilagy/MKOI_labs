@@ -1,0 +1,86 @@
+import numpy as np
+import cv2
+from matplotlib import pyplot as plt
+from matplotlib import rc
+from os import listdir
+from os.path import isfile, join
+import re
+import os
+from PIL import Image
+from PIL import ImageChops
+
+numbers = re.compile(r'(\d+)')
+def numericalSort(value):
+    parts = numbers.split(value)
+    parts[1::2] = map(int, parts[1::2])
+    return parts
+
+def readFiles(path):
+    files = [f for f in listdir(path) if isfile((join(path, f)))]
+    files = sorted(files, key=numericalSort)
+    return files
+
+def generateMasks():
+    L5 = [1, 4, 6, 4, 1]
+    E5 = [-1, -2, 0, 2, 1]
+    S5 = [-1, 0, 2, 0, -1]
+    R5 = [1, -4, 6, -4, 1]
+    Vectors = [L5, E5, S5, R5]
+
+    Masks = []
+    for i in range(len(Vectors)):
+        L = []
+        for j in range(len(Vectors)):
+            A = np.array(Vectors[i])
+            B = np.array([Vectors[j]]).T
+            L.append(np.dot(A[:, None], B[:, None]))
+        Masks.append(L)
+    return Masks
+
+def withoutLighting(img):
+    kernel = np.ones((30, 30), np.float) / (30 ** 2)
+    np_img = np.asarray(img)
+    np_average_img = cv2.filter2D(np_img, -1, kernel)
+    average_img = Image.fromarray(np.uint8(np_average_img))
+    new_img = ImageChops.subtract(img, average_img)
+    return new_img
+
+#энергетические карты
+def powerMap(img):
+    Masks = generateMasks()
+    img_ = np.asarray(withoutLighting(img))
+
+    Maps = []
+    for i in range(4):
+        L = []
+        for j in range(4):
+            Map = cv2.filter2D(img_, -1, Masks[i][j])
+            Map = np.absolute(Map) #????
+            # print(Map)
+            L.append(Map)
+        Maps.append(L)
+
+    final_maps = []
+    for i in range(4):
+        for j in range(i, 4):
+            if i + j != 0: # исключить L5L5
+                if i != j:
+                    M = (Maps[i][j] + Maps[j][i]) / 2
+                    final_maps.append(M)
+                else:
+                    final_maps.append(Maps[i][j])
+    return final_maps #l5e5, l5s5, l5r5, e5e5, e5s5, e5r5, s5s5, s5r5, r5r5
+
+def FisherMatrix(powerMaps, N):
+    # powerMaps - карты по одному из признаков для различных картинок
+    # N - количество картинок
+    arr = np.zeros((N, 2+N))
+    for i in range(N):
+        arr[i][0] = np.mean(powerMaps[i])
+        arr[i][1] = np.std(powerMaps[i])
+        for j in range(N):
+            if j > i:
+                arr[i][j+2] = (np.mean(powerMaps[i])-np.mean(powerMaps[j]))/(np.std(powerMaps[j])+np.std(powerMaps[i]))
+    return arr
+
+
