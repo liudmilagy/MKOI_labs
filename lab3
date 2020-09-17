@@ -1,0 +1,207 @@
+import numpy as np
+import cv2
+from matplotlib import pyplot as plt
+from matplotlib import rc
+from os import listdir
+from os.path import isfile, join
+import re
+import os
+from PIL import Image
+from PIL import ImageChops
+
+numbers = re.compile(r'(\d+)')
+def numericalSort(value):
+    parts = numbers.split(value)
+    parts[1::2] = map(int, parts[1::2])
+    return parts
+
+def readFiles(path):
+    files = [f for f in listdir(path) if isfile((join(path, f)))]
+    files = sorted(files, key=numericalSort)
+    return files
+
+def CoOccurrenceMatrix(img, d):
+    P = np.amax(img) # максимальное зн-е пикселя. Должно 7? А не 255
+    N = len(img)
+    M = len(img[0])
+
+    COM = np.zeros((P + 1, P + 1))
+    for i in range(P + 1):
+        for j in range(P + 1):
+            k = 0
+            # После пикселя со значением i на расстоянии d должен стоять пиксель со зн-ем j. Нужно найти количество таких пар
+            for x in range(N):
+                for y in range(M):
+                    if ((x + d[0]) < N) and ((y + d[1]) < M):
+                        if ((img[x][y] == i) and (img[x + d[0]][y + d[1]] == j)):
+                            # print(i, j, ' coord:', x, ' ', y)
+                            k = k + 1
+            COM[i][j] = k
+
+    Sum = np.sum(COM)
+    p = COM/Sum
+    return p
+
+def Cov(p, a_, b_):
+    A = len(p)
+    B = len(p[0])
+
+    B_C = 0
+    for i in range(A):
+        for j in range(B):
+            B_C = B_C + (i - a_)*(j - b_) * p[i][j]
+    return B_C
+
+def M_I(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + ((i - j)**2) * p[i][j]
+
+    return Res
+
+def B_V(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + np.abs(i-j) * p[i][j]
+
+    return Res
+
+def B_N(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + (p[i][j])**2
+
+    return Res
+
+def B_E(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + p[i][j] * np.log2(p[i][j])
+
+    return Res
+
+def B_D(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + p[i][j] / (1 + (i - j)** 2)
+
+    return Res
+
+def B_hom(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + p[i][j] / (1 + np.abs(i - j))
+
+    return Res
+
+def r_c(p, m_a, m_b, s_a, s_b):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + i*j*p[i][j]
+    Res = (Res - m_a*m_b)/ (s_a*s_b)
+
+    return Res
+
+def mean_a(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + i * p[i][j]
+
+    return Res
+
+def mean_b(p):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + j * p[i][j]
+
+    return Res
+
+def sko_a(p, m_a):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + i * i * p[i][j]
+
+    Res = Res - m_a**2
+    Res = np.sqrt(Res)
+
+    return Res
+
+def sko_b(p, m_b):
+    A = len(p)
+    B = len(p[0])
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + j * j * p[i][j]
+
+    Res = Res - m_b ** 2
+    Res = np.sqrt(Res)
+
+    return Res
+
+def argmax(p):
+    A = len(p)
+    B = len(p[0])
+
+    p_a = np.zeros(A)
+    for i in range(A):
+        sum = 0
+        for j in range(B):
+            sum = sum + p[i][j]
+        p_a[i] = sum
+
+    p_b = np.zeros(B)
+    for j in range(B):
+        sum = 0
+        for i in range(A):
+            sum = sum + p[i][j]
+        p_b[j] = sum
+
+    Res = 0
+    for i in range(A):
+        for j in range(B):
+            Res = Res + p[i][j] / (p_a[i] * p_b[j])
+
+    Res = Res - 1
+    return Res
