@@ -1,0 +1,165 @@
+import numpy as np
+import cv2
+from matplotlib import pyplot as plt
+from matplotlib import rc
+from os import listdir
+from os.path import isfile, join
+import re
+import cmath
+import os
+from PIL import Image
+from PIL import ImageChops
+
+numbers = re.compile(r'(\d+)')
+def numericalSort(value):
+    parts = numbers.split(value)
+    parts[1::2] = map(int, parts[1::2])
+    return parts
+
+def readFiles(path):
+    files = [f for f in listdir(path) if isfile((join(path, f)))]
+    files = sorted(files, key=numericalSort)
+    return files
+
+def bw(img):
+    n = len(img)
+    m = len(img[0])
+    res_img = np.full((n, m), 0)
+    for i in range(n):
+        for j in range(m):
+            if img[i][j] > 128:
+                res_img[i][j] = 255
+    return res_img
+
+def discoverStartPoint(img):
+    for i, row in enumerate(img):
+        for j, value in enumerate(row):
+            if value == 0:
+                start_point = (i, j)
+                print('start_point', start_point, value)
+                break
+        else:
+            continue
+        break
+    return start_point
+
+def funcFriman(start_point, img, ver):
+    if ver == 8:
+        directions = [0, 1, 2,
+                      3, 4,
+                      5, 6, 7]
+
+        change_j = [1, 1, 0,  # x or columns
+                    -1, -1,
+                    -1, 0, 1]
+
+        change_i = [0, -1, -1,  # y or rows
+                    -1, 0,
+                    1, 1, 1]
+    elif ver == 4:
+        directions = [0, 1, 2, 3]
+        change_j = [1, 0, -1, 0]
+        change_i = [0, -1, 0, 1]
+
+    border = []
+    chain = []
+    curr_point = start_point
+    pairs = pair_idx(ver)
+    fl = 0
+    for i in range(len(pairs)):
+        b = pairs[i][0]
+        bl_point = (curr_point[0] + change_i[b], curr_point[1] + change_j[b])
+
+        w = pairs[i][1]
+        wt_point = (curr_point[0] + change_i[w], curr_point[1] + change_j[w])
+
+        if (img[wt_point] == 255 and img[bl_point] == 0):
+            new_point = bl_point
+            img[new_point] = 128
+            border.append(new_point)
+            chain.append(b)
+            curr_point = new_point
+            fl = 1
+            break
+
+    count = 0
+    cc = 0
+    while curr_point != start_point:
+        pairs = pair_idx(ver)
+        fl = 0
+        for i in range(len(pairs)):
+            b = pairs[i][0]
+            bl_point = (curr_point[0] + change_i[b], curr_point[1] + change_j[b])
+
+            w = pairs[i][1]
+            wt_point = (curr_point[0] + change_i[w], curr_point[1] + change_j[w])
+
+            if (img[wt_point] == 255 and img[bl_point] == 0):
+                new_point = bl_point
+                img[new_point] = 128
+                border.append(new_point)
+                chain.append(b)
+                curr_point = new_point
+                fl = 1
+                break
+        if count == 1000: break
+        count += 1
+    return [chain, border]
+
+def pair_idx(ver):
+    pairs = np.zeros((ver, 2), dtype = int)
+    for i in range(ver):
+        if ver == 8:
+            if i != 7:
+                pairs[i] = [i, i + 1]
+            else:
+                pairs[i] = [7, 0]
+        elif ver == 4:
+            if i != 3:
+                pairs[i] = [i, i + 1]
+            else:
+                pairs[i] = [3, 0]
+    return pairs
+
+
+def func_min_dist(ver):
+    d = {}
+    dir = [i for i in range(ver)] #ver = 8 or = 4
+    # print(dir)
+    for i in range(len(dir)):
+        k = 0
+        for j in range(len(dir)):
+            d[(dir[0], dir[j])] = k
+            k = k + 1
+        value = dir[0]
+        dir.remove(value)
+        dir.append(value)
+        # print(dir)
+    return d
+
+def c_g(border):
+    x = 0
+    y = 0
+    N = len(border)
+    for i in range(N):
+        x = x + border[i][0]
+        y = y + border[i][1]
+    xx = np.floor(x / N)
+    yy = np.floor(y / N)
+
+    return (xx, yy)
+
+def signature(border, centre):
+    sig = [ [0]*2 for _ in range(len(border)) ]
+    for i in range(len(border)):
+        # print(border[i][0], centre[0], border[i][0] - centre[0], ' ', border[i][1] - centre[1])
+        val = (border[i][1] - centre[1]) / (border[i][0] - centre[0] + 0.001)
+        angle1 = cmath.atan(val)
+        # angle = np.abs(angle) * 180/ cmath.pi
+        sig[i][0] = np.real(angle1)
+        # print(sig[i][0] )
+        sig[i][1] = np.sqrt((border[i][1] - centre[1]) ** 2 + (border[i][0] - centre[0]) ** 2)
+    # print(sig)
+    return sig
+
+
